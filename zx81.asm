@@ -1083,10 +1083,12 @@ TOKENS_TAB:
 ; THE 'LOAD-SAVE UPDATE' ROUTINE
 ; ------------------------------
 
-LOAD_SAVE:
+; check if enough bytes are already been loaded or written (during save)
+
+LOAD_SAVE: 
         inc     hl
         ex      de, hl
-        ld      hl, (E_LINE)    ; system variable edit line E_LINE.
+        ld      hl, (E_LINE)    ; E_LINE contains the last address to be loaded/saved
         scf                     ; set carry flag
         sbc     hl, de
         ex      de, hl
@@ -1533,9 +1535,8 @@ DELAY_4:
 ;
 
 LOAD:
-        call    NAME            ; routine NAME
-
-; DE points to start of name in RAM.
+        call    NAME            ; DE will point to start of name in RAM 
+                                ; and BC keep the lenght (0 if name not given)
 
         rl      d               ; pick up carry
         rrc     d               ; carry now in bit 7.
@@ -1554,20 +1555,22 @@ IN_BYTE:
 NEXT_BIT:
         ld      b, $00          ; set counter to 256
 
-BREAK_3:
+WAIT_HIGH_SIGNAL:
         ld      a, $7F          ; read the keyboard row
         in      a, ($FE)        ; with the SPACE key.
 
         out     ($FF), a        ; output signal to screen.
 
         rra                     ; test for SPACE pressed.
-        jr      nc, BREAK_4     ; forward if so to BREAK-4
+        jr      nc, BREAK_PRESSED
 
         rla                     ; reverse above rotation
-        rla                     ; test tape bit.
+        rla                     ; test tape signal
         jr      c, GET_BIT      ; forward if set to GET-BIT
 
-        djnz    BREAK_3         ; loop back to BREAK-3
+        djnz    WAIT_HIGH_SIGNAL; loop back until beginning of bit is detected
+
+        ; if not found in 256 loops then
 
         pop     af              ; drop the return address.
         cp      d               ; ugh.
@@ -1600,7 +1603,7 @@ MATCHING:
         rla                     ; test for inverted bit.
         jr      nc, IN_NAME     ; back if not to IN-NAME
 
-; the name has been matched in full.
+; the name (if present) has been matched in full, now let's
 ; proceed to load the data but first increment the high byte of E_LINE, which
 ; is one of the system variables to be loaded in. Since the low byte is loaded
 ; before the high byte, it is possible that, at the in-between stage, a false
@@ -1627,37 +1630,38 @@ GET_BIT:
         ld      e, $94          ; timing value.
 
 TRAILER:
-        ld      b, $1A          ; counter to twenty six.
+        ld      b, $1A          ; counter to twenty six
+                                ; (signal lenght will differentiate "1" from "0")
 
 COUNTER:
         dec     e               ; decrement the measuring timer.
-        in      a, ($FE)        ; read the
-        rla                     ;
-        bit     7, e            ;
-        ld      a, e            ;
+        in      a, ($FE)        ; read the cassette line status
+        rla                     ; put it into carry
+        bit     7, e            ; set Zero flag (Carry flag is not affected)
+        ld      a, e            ; save timer into a for next comparison with $56
         jr      c, TRAILER      ; loop back with carry to TRAILER
 
         djnz    COUNTER         ; to COUNTER
 
         pop     de              ;
-        jr      nz, BIT_DONE    ; to BIT-DONE
+        jr      nz, BIT_DONE    ; to BIT-DONE (if register e was going negative)
 
-        cp      $56             ;
+        cp      $56             ; timer comparison
         jr      nc, NEXT_BIT    ; to NEXT-BIT
 
 BIT_DONE:
-        ccf                     ; complement carry flag
-        rl      c               ;
-        jr      nc, NEXT_BIT    ; to NEXT-BIT
+        ccf                     ; complement the bit read from tape
+        rl      c               ; and put it into c (that was initialized 0x00000001 so...)
+        jr      nc, NEXT_BIT    ; after exactly 8 rl (bits read) carry will be set
 
-        ret                     ; return with full byte.
+        ret                     ; return with full byte read in register c.
 
 ; ---
 
 ; if break is pressed while loading data then perform a reset.
 ; if break pressed while waiting for program on tape then OK to break.
 
-BREAK_4:
+BREAK_PRESSED:
         ld      a, d            ; transfer indicator to A.
         and     a               ; test for zero.
         jr      z, RESTART      ; back if so to RESTART
@@ -1671,7 +1675,10 @@ REPORT_D:
 ; THE 'PROGRAM NAME' SUBROUTINE
 ; -----------------------------
 ;
-;
+; This routine prepares the loading/saving process
+; setting (if name of the program is present) bit 7
+; on the last character of edit line in order to match
+; the one recorded on tape (bit 7 is used to end name)
 
 NAME:
         call    SCANNING        ; routine SCANNING
@@ -1684,14 +1691,14 @@ NAME:
 
         push    hl              ;
         call    SET_FAST        ; routine SET-FAST
-        call    STK_FETCH       ; routine STK-FETCH
-        ld      h, d            ;
+        call    STK_FETCH       ; get the string parameters of load/save command
+        ld      h, d            ; (string start is in DE and the length in BC)
         ld      l, e            ;
         dec     c               ;
-        ret     m               ;
+        ret     m               ; ret if name not present on the line
 
-        add     hl, bc          ;
-        set     7, (hl)         ;
+        add     hl, bc          ; else set bit 7 of the last char of the name
+        set     7, (hl)         ; to match the recorded string
         ret                     ;
 
 ; -------------------------
