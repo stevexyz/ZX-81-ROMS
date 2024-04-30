@@ -1085,7 +1085,7 @@ TOKENS_TAB:
 
 ; check if enough bytes are already been loaded or written (during save)
 
-LOAD_SAVE: 
+LOADSAVE_FINISH: 
         inc     hl
         ex      de, hl
         ld      hl, (E_LINE)    ; E_LINE contains the last address to be loaded/saved
@@ -1479,8 +1479,8 @@ OUT_NAME:
 OUT_PROG:
         call    OUT_BYTE        ; routine OUT-BYTE
 
-        call    LOAD_SAVE       ; routine LOAD/SAVE                     >>
-        jr      OUT_PROG        ; loop back to OUT-PROG
+        call    LOADSAVE_FINISH ; check if saving is terminated (get out there)
+        jr      OUT_PROG        ; if not continue with the next byte
 
 ; -------------------------
 ; THE 'OUT-BYTE' SUBROUTINE
@@ -1617,8 +1617,9 @@ IN_PROG:
         ld      d, b            ; set D to zero as indicator.
         call    IN_BYTE         ; routine IN-BYTE loads a byte
         ld      (hl), c         ; insert assembled byte in memory.
-        call    LOAD_SAVE       ; routine LOAD/SAVE                     >>
-        jr      IN_PROG         ; loop back to IN-PROG
+        call    LOADSAVE_FINISH ; check if LOAD is finished (E_LINE has been reached)
+                                ; and exit there in case
+        jr      IN_PROG         ; else continue to load
 
 ; ---
 
@@ -1626,8 +1627,8 @@ IN_PROG:
 ; from the IN-BYTE subroutine.
 
 GET_BIT:
-        push    de              ; save the
-        ld      e, $94          ; timing value.
+        push    de              ; save calling register
+        ld      e, $94          ; assign timing value
 
 TRAILER:
         ld      b, $1A          ; counter to twenty six
@@ -1690,7 +1691,8 @@ NAME:
         ret     nc              ;
 
         push    hl              ;
-        call    SET_FAST        ; routine SET-FAST
+        call    SET_FAST        ; all load/save operations will be done in FAST
+                                ; mode to guarantee timings
         call    STK_FETCH       ; get the string parameters of load/save command
         ld      h, d            ; (string start is in DE and the length in BC)
         ld      l, e            ;
