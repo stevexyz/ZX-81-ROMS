@@ -1566,7 +1566,7 @@ WAIT_HIGH_SIGNAL:
 
         rla                     ; reverse above rotation
         rla                     ; test tape signal
-        jr      c, GET_BIT      ; forward if set to GET-BIT
+        jr      c, GET_BITS     ; forward if set to GET-BIT
 
         djnz    WAIT_HIGH_SIGNAL; loop back until beginning of bit is detected
 
@@ -1626,7 +1626,7 @@ IN_PROG:
 ; this branch assembles a full byte before exiting normally
 ; from the IN-BYTE subroutine.
 
-GET_BIT:
+GET_BITS:
         push    de              ; save calling register
         ld      e, $94          ; assign timing value
 
